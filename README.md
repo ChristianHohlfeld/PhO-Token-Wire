@@ -1,421 +1,289 @@
-# PhO Token Wire
+# PhoLine — PhO Token Wire
 
-**Measured client-side PhO compression for LLM web chats — by Christian Heinrich Hohlfeld.**
+**Bilingual client-side PhO channel compression for LLM web chats.**
 
 **Author / concept:** Christian Heinrich Hohlfeld, B.Sc.  
 **ORCID:** [0009-0003-6634-9045](https://orcid.org/0009-0003-6634-9045)  
 **Website:** [christianhohlfeld.com](https://christianhohlfeld.com/)  
-**Research lineage:** [PhO-Compress — A Two-Stage Framework to Enhance Optical LLM Context Compression](https://christianhohlfeld.com/Christian_Heinrich_Hohlfeld_Konstanz_PhO-Compress_v2.pdf)
+**Research lineage:** [PhO-Compress](https://christianhohlfeld.com/Christian_Heinrich_Hohlfeld_Konstanz_PhO-Compress_v2.pdf)
 
-PhO Token Wire is an experimental Chrome Manifest V3 extension that asks a practical question:
+PhoLine is a Chrome Manifest V3 research prototype derived from Christian Heinrich Hohlfeld's PhO-Compress work. Its purpose is not to make the visible prompt look shorter. Its purpose is to put a smaller linguistic representation on the actual transport path seen by an unchanged hosted LLM.
 
-> Can an unchanged hosted LLM receive and return less text while preserving the task-relevant information, if linguistic redundancy is removed before the tokenizer sees it?
+## Core idea
 
-The implementation follows a central distinction from Christian Heinrich Hohlfeld's PhO-Compress research direction: **first reduce redundant information; then evaluate the transport representation in the currency that the model actually pays for — tokenizer tokens.**
-
-The extension therefore never assumes that fewer characters automatically mean fewer tokens. Every candidate representation is measured against the original prompt with `o200k_base`, and the browser selects only the lowest measured token count.
-
-## What changed in v0.3.1
-
-The original v0.1 prototype had a conceptual implementation error: it mostly performed phrase rewrites such as `aufgrund der Tatsache, dass -> weil`, then appended a large K/F/U/N wire instruction to every prompt. A real test showed the problem immediately:
+The user keeps writing normal German or English:
 
 ```text
-Prompt: 283 -> 281     only 2 input tokens saved
-with wire: 389         108 tokens of control overhead
+visible composer: normal human text
 ```
 
-That was not a meaningful implementation of the PhO idea.
-
-v0.3.1 changes the architecture:
-
-1. The browser generates several competing representations of the same prompt.
-2. Two of them are explicit PhO candidates:
-   - **Phen-A:** graphemic redundancy -> compact, model-readable phonemic ASCII normalization.
-   - **Phen-B:** Phen-A plus removal of predictable phonetic / grammatical surface material.
-3. All candidates are counted with `o200k_base`.
-4. The lowest real token count wins.
-5. The answer-control prompt is intentionally tiny instead of a 100+ token schema.
-6. The UI shows all candidate token counts and the reply break-even.
-
-This makes the experiment falsifiable: if Phen-A or Phen-B does not beat ordinary text for a prompt, it is not used.
-
-## Core architecture
+PhoLine builds a parallel transport representation:
 
 ```text
-original prompt
-   |
-   +--> safe rewrite
-   |
-   +--> aggressive semantic rewrite
-   |
-   +--> Phen-A: grapheme -> phonemic ASCII core
-   |
-   +--> Phen-B: Phen-A -> predictive / redundant material removed
-   |
-   v
-exact o200k measurement of every candidate
-   |
-   v
-lowest-token representation only
-   |
-   +--> tiny terse-reply hint
-   |
-   v
-hosted LLM
-   |
-   v
-compact fragment reply
-   |
-   v
-local browser rendering
+Text
+  -> language detection (DE / EN)
+  -> phonetic / linguistic reduction
+  -> predictable redundancy removal
+  -> tokenizer-friendly English canonical stems
+  -> exact token-cost gate
+  -> request payload replacement
+  -> hosted LLM
+  -> optional ¶ response channel
+  -> local browser expansion
 ```
 
-The browser therefore separates three layers:
+The visible ChatGPT / Grok / Claude / Gemini composer is not rewritten. The extension installs a MAIN-world hook at `document_start` and intercepts page-level `fetch`, `XMLHttpRequest.send`, and `WebSocket.send`. Immediately before transmission it replaces an exact occurrence of the original prompt in the request body with the measured PhoLine channel, but only when that channel is cheaper under the configured measurement tokenizer.
 
-1. **Information layer** — what information still has to survive for the task?
-2. **Transport layer** — which representation uses the fewest real tokenizer tokens?
-3. **Presentation layer** — which words / formatting can be restored locally without spending completion tokens?
-
-## Input candidates
-
-### Original
-
-No transformation. This is always kept as a candidate and acts as the safety baseline.
-
-### Safe
-
-Conservative deterministic phrase reduction outside protected spans.
-
-Examples:
+This distinction is the point of the project:
 
 ```text
-aufgrund der Tatsache, dass -> weil
-in Bezug auf                -> zu
-in order to                 -> to
+UI compression != channel compression
 ```
 
-Code, URLs, email addresses, quoted literals and long IDs are protected from generic rewriting.
+If the UI is shortened while the application still serializes the original sentence elsewhere, no token saving has been demonstrated. PhoLine therefore reports success only after the network hook has actually rewritten a request body.
 
-### Aggressive
+## Why IPA itself is not the wire format
 
-Removes additional grammatical surface redundancy while preserving negation, code, numbers and other protected payload.
+PhO-Compress starts from phonetic structure, but literal IPA is not automatically cheap in a modern BPE tokenizer. A string can contain fewer linguistic symbols and still fragment into more tokenizer IDs.
 
-This is intentionally lossy and intended for S-sufficient communication rather than orthographically exact reconstruction.
+PhoLine keeps an IPA-like diagnostic path for comparison, but does not blindly send IPA. The production experiment instead uses PhO as the information filter and serializes the surviving content with common English canonical stems when a mapping exists.
 
-### Phen-A
-
-Phen-A is the first explicitly phonetic candidate.
-
-It removes orthographic distinctions that often carry little or no additional phonetic information. Examples of the current deterministic German normalization include:
+The final acceptance criterion is the measured token count of the whole channel:
 
 ```text
-tsch -> tsh
-sch  -> sh
-ph   -> f
-th   -> t
-ck   -> k
-tz   -> z
-dt   -> t
-ss/ß -> s
-ie   -> i
-double consonants -> single consonant
-selected orthographic h length markers -> removed
+send PhoLine channel only if tokens(channel) < tokens(raw)
+otherwise send the original unchanged
 ```
 
-This is intentionally **ASCII and model-readable**, not literal IPA. The reason is practical: a standard LLM already has strong priors for Latin text, while IPA can fragment badly under a BPE tokenizer.
+Thus an unknown word may remain as a residual and consume more than one token; the fixed canonical stem vocabulary is separately constrained to atomic tokenizer entries, while the whole-message gate prevents a bad residual mix from making the request more expensive.
 
-Phen-A is therefore best understood as a browser-side phonemic normalization experiment, not as a complete linguistic G2P engine.
+## German and English
 
-### Phen-B
+PhoLine supports both languages in the same codec.
 
-Phen-B starts from Phen-A and removes additional predictable material:
-
-- frequent grammatical function words,
-- selected schwa-like / predictable endings,
-- duplicate grammatical surface material,
-- some conjunction surface cost.
-
-Negation and decision-changing operators such as `nicht`, `kein`, `ohne`, `nur`, `oder`, `aber`, `wenn`, `falls`, `weil` are explicitly retained.
-
-Phen-B is intentionally lossy in form. Its research target is task sufficiency, not exact orthographic reconstruction.
-
-## Why candidate measurement matters
-
-Character reduction alone is meaningless for API/context cost.
-
-For example, a visually shorter pseudo-phonetic form may split into more BPE pieces than the original German word. Therefore PhO Token Wire does not use a transform because it *looks* compressed.
-
-It evaluates:
+For German, the path combines:
 
 ```text
-T_original
-T_safe
-T_aggressive
-T_phen_a
-T_phen_b
+German input
+  -> German redundancy / phonetic normalization
+  -> removal of selected predictable function material
+  -> canonical English transport stems where defined
+  -> residual preservation for unmapped content
 ```
 
-and selects:
+Examples of canonical transport mappings include:
 
 ```text
-argmin(T_candidate)
+warum       -> why
+Regierung   -> government
+Kosten      -> cost
+Fehler      -> bug
+Lösung      -> fix
+Unterschied -> diff
+prüfen      -> check
+erklären    -> tell
 ```
 
-The UI displays the actual counts, e.g.:
+For English, the source is already close to the transport vocabulary, so PhoLine mainly normalizes morphology and redundant surface forms:
 
 ```text
-original:283 | safe:281 | aggressive:244 | phen-a:267 | phen-b:221
-selected phen-b: 283 -> 221 (-62, -21.9%)
+applications   -> app
+information    -> info
+configuration  -> config
+problems       -> issue
+solutions      -> fix
+currently      -> now
 ```
 
-If `phen-a` or `phen-b` loses, it is not selected.
+Language mode can be `Auto DE/EN`, forced German, or forced English.
 
-That is the important experimental discipline: **PhO has to win in token space, not in character space.**
+## Atomic stem rule
 
-## Completion-side compression
+The fixed transport codebook is checked against OpenAI's public `o200k_base` rank table. The repository CI rejects a canonical codebook atom if it is not an atomic token both as an initial token and with a leading space.
 
-The old K/F/U/N instruction was too expensive because its control language could cost more than the input reduction.
+This does **not** claim that every arbitrary residual word is one token. Residuals are allowed because the codec must preserve task-relevant information. Their real cost is captured by the whole-channel measurement before transmission.
 
-The current reply hint is intentionally small:
+## Network interception
+
+`page-hook.js` runs in Chrome's MAIN world before page application code whenever possible. It wraps:
+
+- `window.fetch`
+- `XMLHttpRequest.prototype.send`
+- `window.WebSocket`
+
+The isolated extension world computes and measures the channel, then exposes the current exact source/channel pair to the MAIN-world hook through page state. The hook rewrites only an exact occurrence of the measured source prompt. This gives an important stale-state safety property: if the user edits the prompt after measurement, an old channel does not match the new request body and therefore is not substituted.
+
+The status panel distinguishes two states:
 
 ```text
-Telegrammstil; <=80 Wörter; Punkte mit |.
+Hook armed
 ```
 
-The model stays in ordinary learned vocabulary. The `|` separator only marks semantic fragments. The browser can render those fragments locally as bullets.
-
-The UI shows the exact extra input cost of this hint and the completion break-even:
+means a cheaper channel has been prepared.
 
 ```text
-Reply-Hinweis +11; gesendet 232; Break-even 0
+✓ Request ersetzt via fetch
+✓ Request ersetzt via xhr
+✓ Request ersetzt via websocket
 ```
 
-or, if the hint temporarily pushes the prompt above the original:
+means a supported outgoing request body was actually rewritten.
+
+Provider web applications can change transport implementations. Binary bodies, service-worker-only paths, provider-specific encodings, or references captured before the hook can require additional adapters. Therefore a green local token measurement alone is not presented as proof that a particular provider request was rewritten; the hook confirmation is separate.
+
+## Optional response channel
+
+PhoLine can append the compact control:
 
 ```text
-Reply-Hinweis +11; gesendet 289; Break-even 6
+reply stem ¶
 ```
 
-In the second case, the answer only needs to become more than six completion tokens shorter for the combined prompt+completion path to win.
+to the already compressed request channel. This asks a cooperative model to answer as compact `¶`-separated semantic atoms rather than expanding everything into presentation prose.
 
-## Protected information / U principle
+Example wire response:
 
-PhO-Compress separates compressible linguistic structure from information that must survive exactly. PhO Token Wire currently implements the practical browser-side version of that idea by protecting such spans inline instead of forcing them through phonetic rewriting.
+```text
+¶cause cache race¶fix wait visible state¶risk network timing
+```
 
-Protected examples include:
+The browser can render those atoms locally. Presentation HTML and labels created locally do not consume completion tokens.
 
-- fenced code blocks,
-- inline code,
-- URLs,
-- email addresses,
-- quoted literals,
-- long numeric identifiers,
-- long hexadecimal identifiers.
+This mechanism is experimental. A hosted model is not guaranteed to follow a text-level channel protocol, and provider-side hidden reasoning or framing is outside the extension's control.
 
-A future version can move those protected spans into an explicit side-channel `U` only when doing so itself passes the tokenizer-cost gate.
+## Measurement
+
+PhoLine currently uses `o200k_base` for exact local text-token measurement. The service worker downloads and caches OpenAI's public rank table and runs tokenizer self-tests before reporting an exact count.
+
+The UI compares at least:
+
+```text
+raw text
+IPA diagnostic
+PhoLine channel
+```
+
+The IPA diagnostic is deliberately shown because it demonstrates an important negative result: fewer phonetic symbols do not necessarily mean fewer BPE tokens.
+
+### Author benchmark
+
+The following measurements were supplied by the project author during development and motivated the network-hook architecture:
+
+| Test | Tokens | Delta |
+| --- | ---: | ---: |
+| Bundestag prompt, raw | 30 | — |
+| Same content, literal IPA on channel | 44 | +47% |
+| PhoLine channel input | 14 | -53% |
+| Same question to grok-4.5, normal response N | 127 | — |
+| Same question, PhoLine response M | 18 | M/N = 0.14 / -86% |
+
+These numbers are benchmark observations, not a universal compression guarantee. Reproducible evaluation requires the exact prompt, provider/model version, tokenizer basis, settings, and response capture. The project should keep adding fixed fixtures rather than generalizing from one result.
+
+## What PhoLine measures — and what it does not
+
+It can measure:
+
+- visible source prompt text
+- diagnostic phonetic/IPA representation
+- generated PhoLine channel
+- exact `o200k_base` text-token counts
+- whether its page-level fetch/XHR/WebSocket hook actually replaced a matching request body
+
+It cannot infer from the browser alone:
+
+- a provider's hidden system prompt
+- hidden chat framing
+- tool-call tokens
+- server-side cached-token accounting
+- invisible reasoning tokens
+- a proprietary tokenizer that differs from the measurement tokenizer
+- provider transformations that occur after the browser request leaves the page
+
+Therefore the technically correct claim is: PhoLine reduces the measured user transport string when the gate passes and confirms page-level request replacement on supported transport paths. Provider billing reduction must be measured separately for each provider/model.
 
 ## Installation
 
-1. Clone or download this repository.
-2. Open `chrome://extensions`.
-3. Enable **Developer mode**.
-4. Click **Load unpacked**.
-5. Select the repository folder.
-6. Reload ChatGPT, Claude, Gemini or Grok.
+1. Open the latest GitHub Release.
+2. Download `PhoLine-vX.Y.Z.zip`.
+3. Extract the ZIP.
+4. Open `chrome://extensions`.
+5. Enable **Developer mode**.
+6. Choose **Load unpacked**.
+7. Select the extracted directory containing `manifest.json`.
+8. Reload ChatGPT, Grok, Claude or Gemini.
 
-The in-page widget shows **Token optimieren**.
+The panel should show `PhoLine · network hook`. Write normally. The composer remains normal text while the panel measures the parallel channel automatically.
 
-Write your prompt first. Clicking the button does **not** send anything. It replaces the composer with the cheapest measured representation and shows the token accounting. You decide whether to press Send.
+## Build and releases
 
-## Recommended settings
+GitHub Actions validates the JavaScript, runs codec tests, checks the fixed channel vocabulary against `o200k_base`, builds the Chrome ZIP and uploads it as an Actions artifact.
 
-Current defaults:
+For every `v*` tag whose version matches `manifest.json`, the workflow also creates/updates a GitHub Release and attaches:
 
 ```text
-Input adaptiv kürzen: ON
-Kompression: aggressiv/adaptiv
-Antwort knapp halten: ON
-Antwortlimit: 80 Wörter
+PhoLine-vX.Y.Z.zip
+PhoLine-vX.Y.Z.zip.sha256
 ```
 
-Use `safe` when semantic fidelity matters more than token reduction. Use `aggressiv/adaptiv` when you explicitly want to test Phen-A / Phen-B.
-
-## Supported web chats
-
-Current DOM integrations:
-
-- ChatGPT — `chatgpt.com`, legacy `chat.openai.com`
-- Claude — `claude.ai`
-- Gemini — `gemini.google.com`
-- Grok — `grok.com`
-
-These are browser integrations, not official provider plugins. DOM changes can require selector updates.
-
-## Token measurement
-
-The service worker downloads and caches OpenAI's public `o200k_base.tiktoken` rank table:
+## Architecture
 
 ```text
-https://openaipublic.blob.core.windows.net/encodings/o200k_base.tiktoken
-```
+manifest.json
+  MV3 declaration; MAIN-world hook + isolated extension scripts
 
-Before reporting an exact value, the local tokenizer implementation runs known self-test vectors.
+page-hook.js
+  pre-network fetch/XHR/WebSocket request interception
 
-Measured:
-
-- original visible prompt,
-- every transformed prompt candidate,
-- final visible outgoing prompt,
-- reply-hint overhead.
-
-Not visible to the extension:
-
-- hidden provider system prompts,
-- provider-specific chat framing,
-- cached-token accounting,
-- hidden tool calls,
-- provider-side reasoning,
-- model tokenizers different from `o200k_base`.
-
-Accordingly, the extension reports **measured transport-text savings**, not guaranteed billing savings for every provider.
-
-## Files
-
-```text
 phen.js
-  Phen-A and Phen-B German experimental codec
-  protected spans
-  phonemic normalization
-  predictable-material reduction
+  DE/EN detection, phonetic diagnostics, PhO reduction,
+  canonical English stem channel
 
 compressor.js
-  safe/aggressive candidates
-  integrates Phen-A / Phen-B candidates
-  compact reply hint
-  fragment parser / renderer
-
-content.js
-  detects the web-chat composer
-  measures every candidate
-  chooses only the cheapest real token representation
-  displays candidate counts and break-even
-  locally renders compact fragment replies
+  channel contract and local ¶ expansion
 
 tokenizer.js
-  o200k rank loading / cache
-  local BPE counting
-  tokenizer self-tests
+  exact o200k_base rank loading, BPE counting, self-tests
 
 background.js
-  Chrome service-worker bridge
-  settings and tokenizer calls
+  tokenizer/settings service worker
+
+content.js
+  composer observation, measurement gate, hook state bridge,
+  request-rewrite confirmation, response expansion
 
 popup.html / popup.js
-  extension controls
+  enable/language/reply-channel settings
 
-tests/test_compressor.js
-  deterministic codec / compressor tests
-
-.github/workflows/test.yml
-  syntax + unit tests on push / pull request
+tests/
+  bilingual codec tests and tokenizer-codebook validation
 ```
 
-## Testing
+## Privacy
 
-Run locally:
+PhoLine has no application backend. Codec processing and response expansion happen locally in the browser. The extension itself fetches the public tokenizer rank table used for measurement. The actual chat request continues to go to the provider the user is already using.
 
-```bash
-node --check phen.js
-node --check compressor.js
-node --check content.js
-node --check background.js
-node tests/test_compressor.js
-```
+## Research relationship
 
-For research-quality evaluation, use a corpus of real prompts and record:
+PhoLine is an applied transport experiment derived from Christian Heinrich Hohlfeld's PhO-Compress architecture:
 
 ```text
-input_tokens_original
-input_tokens_safe
-input_tokens_aggressive
-input_tokens_phen_a
-input_tokens_phen_b
-selected_representation
-output_tokens_baseline
-output_tokens_compact
-semantic_task_success
+X_Text -> G2P -> X_IPA -> E_L -> Z_Phenom -> transport
 ```
 
-Useful metrics:
+The browser extension does not claim to be a full scientific implementation of every PhO-Compress stage. In particular, its current G2P/phonetic logic is rule-based rather than a full pronunciation engine. Its purpose is to isolate and test the practical hypothesis that linguistic redundancy can be removed before an unchanged LLM sees the transport string, while keeping tokenizer cost as an empirical constraint instead of assuming that phonetic notation is cheap.
 
-```text
-input_saving  = 1 - selected/original
-output_saving = 1 - compact/baseline
-total_saving  = 1 - (selected + compact)/(original + baseline)
-```
+## Citation
 
-The research target is not "short text". It is:
+> Hohlfeld, Christian Heinrich. *PhoLine — PhO Token Wire: Bilingual Pre-Tokenizer Channel Compression for LLM Web Chats*. 2026. ORCID: 0009-0003-6634-9045.
 
-```text
-task-relevant information / tokenizer token
-```
+Machine-readable citation metadata is in [`CITATION.cff`](CITATION.cff).
 
-## Current limitations
+Related work:
 
-- Phen-A is a deterministic German phonemic approximation, not a production G2P engine such as eSpeak-ng.
-- Phen-B is intentionally lossy.
-- German names and homophones are not fully represented by an explicit orthographic side-channel yet.
-- `o200k_base` is not the tokenizer used by every hosted model.
-- A hosted model can ignore or partially follow the compact reply instruction.
-- The extension cannot directly set provider-side `max_output_tokens` through the normal consumer web UI.
-- Local response rehydration currently restores presentation structure, not every omitted grammatical word.
-- Provider DOM changes can break integration selectors.
-
-These limitations are important: v0.3.1 is now testing the correct architectural question, but it is still a research prototype rather than a finished universal codec.
-
-## Research roadmap
-
-1. Replace the deterministic German Phen-A approximation with a bundled client-side G2P engine while preserving the exact token gate.
-2. Add a measured `U` side-channel for names, numbers, code and orthographic distinctions.
-3. Add a phoneme-predictive residual coder and compare it against ordinary semantic pruning.
-4. Learn a tokenizer-native compact alphabet from already-atomic/high-frequency tokens.
-5. Benchmark semantic task fidelity versus token reduction over a fixed corpus.
-6. Add provider-specific tokenizers where vocabularies are available.
-7. Measure total input+completion savings rather than only prompt savings.
-
-## Relationship to PhO-Compress
-
-PhO Token Wire is an applied browser-side experiment derived from Christian Heinrich Hohlfeld's broader PhO-Compress research direction.
-
-PhO-Compress proposes reducing linguistic redundancy before a later representation/compression stage. PhO Token Wire applies the same first-principles separation to unchanged hosted LLMs:
-
-```text
-linguistic redundancy removal
-        before
-transport-token optimization
-```
-
-The extension does not claim to be a complete implementation of the full optical PhO-Compress pipeline. It specifically tests the client-side linguistic / transport part.
-
-## Attribution and citation
-
-**PhO Token Wire — concept and project by Christian Heinrich Hohlfeld.**
-
-Recommended citation:
-
-> Hohlfeld, Christian Heinrich. *PhO Token Wire: Measured Client-Side Phonetic and Semantic Token Reduction for LLM Web Chats*. 2026. ORCID: 0009-0003-6634-9045.
-
-Machine-readable citation metadata is available in [`CITATION.cff`](CITATION.cff).
-
-Related work by the same author:
-
-> Hohlfeld, Christian Heinrich. *PhO-Compress: A Two-Stage Framework to Enhance Optical LLM Context Compression*. v2, 25 October 2025. ORCID: 0009-0003-6634-9045.
-
-Author profile: [christianhohlfeld.com](https://christianhohlfeld.com/)  
-ORCID record: [orcid.org/0009-0003-6634-9045](https://orcid.org/0009-0003-6634-9045)
+> Hohlfeld, Christian Heinrich. *PhO-Compress: A Two-Stage Framework to Enhance Optical LLM Context Compression*. ORCID: 0009-0003-6634-9045.
 
 ## Ownership
 
 Copyright © 2026 Christian Heinrich Hohlfeld. All rights reserved.
 
-No patent, copyright, trademark or other license is granted merely by publication of this repository. A separate license can be added by the author if and when desired.
+No patent, copyright, trademark or other license is granted merely by publication of this repository.
