@@ -33,7 +33,7 @@ jobs:
           node --check background.js
           node --check popup.js
           node --check tokenizer.js
-          node tests/test_compressor.js
+          node tests/test_compressor.js`r`n          node tests/verify_o200k_vocab.js
 
       - name: Read manifest version
         id: version

@@ -26,7 +26,7 @@ assert(protectedChannel.includes('https://example.com/a?x=1'));
 assert(protectedChannel.includes('`foo_bar()`'));
 
 const reply = PhoLine.encode('Warum ist das relevant?', { language:'de', replyChannel:true });
-assert(reply.channel.endsWith('reply stems ¶'));
+assert(reply.channel.endsWith('reply stem ¶'));
 
 const expanded = PhoLine.expandResponse('¶why cost rise¶fix cache', 'de');
 assert.deepStrictEqual(expanded, ['warum Kosten rise', 'Lösung cache']);

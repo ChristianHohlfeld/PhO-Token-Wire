@@ -20,14 +20,14 @@
     'warum':'why','wie':'how','was':'what','wer':'who','wann':'when','wo':'where','welche':'which','welcher':'which','welches':'which',
     'nicht':'not','kein':'not','keine':'not','keinen':'not','keinem':'not','keiner':'not','nie':'never','ohne':'without','nur':'only','oder':'or','aber':'but','wenn':'if','falls':'if','weil':'because','dass':'that','mehr':'more','weniger':'less',
     'mit':'with','für':'for','von':'from','zu':'to','gegen':'vs','zwischen':'between','über':'about','unter':'under','nach':'after','vor':'before',
-    'heute':'today','morgen':'tomorrow','gestern':'yesterday','aktuell':'now','jetzt':'now','neu':'new','neue':'new','neuen':'new','letzte':'last','letzten':'last',
-    'erkläre':'explain','erklären':'explain','erklär':'explain','prüfe':'check','prüfen':'check','prüf':'check','vergleiche':'compare','vergleichen':'compare','vergleich':'compare','nenne':'list','nennen':'list','liste':'list','gib':'give','zeige':'show','zeigen':'show','finde':'find','finden':'find',
-    'kurz':'brief','knapp':'brief','genau':'exact','wichtig':'key','wichtigste':'key','relevant':'relevant','grund':'cause','ursache':'cause','problem':'issue','fehler':'bug','lösung':'fix','unterschied':'diff','unterschiede':'diff','risiko':'risk','kosten':'cost','preis':'price','sparen':'save','ersparnis':'save','token':'token','tokens':'token','antwort':'answer','frage':'question','daten':'data','information':'info','informationen':'info','system':'system','modell':'model','modelle':'model','ki':'ai','künstliche':'ai','intelligenz':'ai',
+    'heute':'today','morgen':'next','gestern':'prev','aktuell':'now','jetzt':'now','neu':'new','neue':'new','neuen':'new','letzte':'last','letzten':'last',
+    'erkläre':'tell','erklären':'tell','erklär':'tell','prüfe':'check','prüfen':'check','prüf':'check','vergleiche':'compare','vergleichen':'compare','vergleich':'compare','nenne':'list','nennen':'list','liste':'list','gib':'give','zeige':'show','zeigen':'show','finde':'find','finden':'find',
+    'kurz':'brief','knapp':'brief','genau':'exact','wichtig':'key','wichtigste':'key','relevant':'key','grund':'cause','ursache':'cause','problem':'issue','fehler':'bug','lösung':'fix','unterschied':'diff','unterschiede':'diff','risiko':'risk','kosten':'cost','preis':'price','sparen':'save','ersparnis':'save','token':'token','tokens':'token','antwort':'answer','frage':'question','daten':'data','information':'info','informationen':'info','system':'system','modell':'model','modelle':'model','ki':'ai','künstliche':'ai','intelligenz':'ai',
     'regierung':'government','gesetz':'law','gesetze':'law','markt':'market','firma':'company','unternehmen':'company','nutzer':'user','benutzer':'user','browser':'browser','plugin':'plugin','erweiterung':'extension'
   }));
 
   const EN_CANON = new Map(Object.entries({
-    'approximately':'approx','application':'app','applications':'app','configuration':'config','configurations':'config','difference':'diff','differences':'diff','information':'info','requirements':'needs','requirement':'need','response':'answer','responses':'answer','problem':'issue','problems':'issue','solution':'fix','solutions':'fix','because':'because','currently':'now','current':'now','important':'key','relevant':'relevant','comparison':'compare','comparing':'compare','explaining':'explain','explanation':'explain','checking':'check','checked':'check','saving':'save','savings':'save','tokens':'token','questions':'question','answers':'answer','users':'user','companies':'company','governments':'government'
+    'approximately':'approx','application':'app','applications':'app','configuration':'config','configurations':'config','difference':'diff','differences':'diff','information':'info','requirements':'needs','requirement':'need','response':'answer','responses':'answer','problem':'issue','problems':'issue','solution':'fix','solutions':'fix','because':'because','currently':'now','current':'now','important':'key','relevant':'key','comparison':'compare','comparing':'compare','explaining':'tell','explanation':'tell','checking':'check','checked':'check','saving':'save','savings':'save','tokens':'token','questions':'question','answers':'answer','users':'user','companies':'company','governments':'government'
   }));
 
   const DE_PHRASES = [
@@ -152,8 +152,17 @@
     return restore(normalizeSpace(out.join(' ')).replace(/\s+\?/g, '?'), slots);
   }
 
+  function channelVocabulary() {
+    return [...new Set([
+      ...DE_TO_STEM.values(),
+      ...EN_CANON.values(),
+      ...KEEP.en.values(),
+      'reply', 'stem'
+    ])];
+  }
+
   function replyControl() {
-    return 'reply stems ¶';
+    return 'reply stem ¶';
   }
 
   function candidates(text) {
@@ -167,7 +176,7 @@
     };
   }
 
-  const api = { detectLanguage, phoneticCore, ipaProbe, channelize, replyControl, candidates, dePhonetic, enPhonetic };
+  const api = { detectLanguage, phoneticCore, ipaProbe, channelize, channelVocabulary, replyControl, candidates, dePhonetic, enPhonetic };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   globalThis.PhenCodec = api;
 })();
