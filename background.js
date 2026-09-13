@@ -5,8 +5,8 @@ const DEFAULTS = {
   enabled: true,
   compressInput: true,
   wireMode: true,
-  level: 'safe',
-  maxWords: 140,
+  level: 'aggressive',
+  maxWords: 80,
   autoDecode: true,
   onlyIfInputSaves: false
 };
