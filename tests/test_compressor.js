@@ -1,37 +1,40 @@
 'use strict';
 const assert = require('assert');
-require('../phen.js');
-const PTW = require('../compressor.js');
+const Phen = require('../phen.js');
+const PhoLine = require('../compressor.js');
 
-const src = 'Kannst du mir bitte in Bezug auf das Deployment erklären, aufgrund der Tatsache, dass nginx neu gestartet wurde?';
-const compressed = PTW.compressInput(src, 'safe');
-assert(!/Kannst du mir bitte/i.test(compressed));
-assert(/zu das Deployment/i.test(compressed) || /zum Deployment/i.test(compressed));
-assert(/weil/i.test(compressed));
+assert.strictEqual(Phen.detectLanguage('Warum ist die Regierung heute wichtig und was ändert sich?'), 'de');
+assert.strictEqual(Phen.detectLanguage('Why is the government important today and what changed?'), 'en');
 
-const protectedSrc = 'Bitte prüfe `foo  bar` und https://example.com/a?x=1 sowie ```js\nconst  x = 1;\n```';
-const protectedOut = PTW.compressInput(protectedSrc, 'safe');
-assert(protectedOut.includes('`foo  bar`'));
-assert(protectedOut.includes('https://example.com/a?x=1'));
-assert(protectedOut.includes('```js\nconst  x = 1;\n```'));
+const de = PhoLine.encode('Kannst du mir bitte erklären, warum die Regierung heute mehr Kosten verursacht?', { language:'auto', replyChannel:false });
+assert.strictEqual(de.lang, 'de');
+assert(de.channel.includes('why'));
+assert(de.channel.includes('government'));
+assert(de.channel.includes('cost'));
+assert(!/\b(?:die|mir|bitte)\b/i.test(de.channel));
 
-const candidates = PTW.inputCandidates('Warum ist die Schreibung eigentlich redundant und wie können wir die Phoneme komprimieren?', 'aggressive');
-assert(candidates.some(x => x.name === 'phen-a'));
-assert(candidates.some(x => x.name === 'phen-b'));
-assert(candidates.some(x => x.name === 'original'));
+const en = PhoLine.encode('Could you please explain why the applications are currently using more tokens?', { language:'auto', replyChannel:false });
+assert.strictEqual(en.lang, 'en');
+assert(en.channel.includes('why'));
+assert(en.channel.includes('app'));
+assert(en.channel.includes('now'));
+assert(en.channel.includes('token'));
 
-const hint = PTW.responseHint('de', 80);
-assert(hint.length < 80);
-assert(hint.includes('80'));
-assert(hint.includes('|'));
+const protectedInput = 'Prüfe https://example.com/a?x=1 und `foo_bar()` genau.';
+const protectedChannel = PhoLine.encode(protectedInput, { language:'de', replyChannel:false }).channel;
+assert(protectedChannel.includes('https://example.com/a?x=1'));
+assert(protectedChannel.includes('`foo_bar()`'));
 
-const fragments = PTW.parseFragments('Kernpunkt | zweiter Punkt | nächster Schritt');
-assert.deepStrictEqual(fragments, ['Kernpunkt','zweiter Punkt','nächster Schritt']);
-assert(PTW.renderFragments(fragments).includes('<li>Kernpunkt</li>'));
+const reply = PhoLine.encode('Warum ist das relevant?', { language:'de', replyChannel:true });
+assert(reply.channel.endsWith('reply stems ¶'));
 
-const parsed = PTW.parseWire('K:Problem erkannt\nF:A|B\nU:nur falls C\nN:X tun');
-assert.deepStrictEqual(parsed.K, ['Problem erkannt']);
-assert.deepStrictEqual(parsed.F, ['A','B']);
-assert.deepStrictEqual(parsed.N, ['X tun']);
+const expanded = PhoLine.expandResponse('¶why cost rise¶fix cache', 'de');
+assert.deepStrictEqual(expanded, ['warum Kosten rise', 'Lösung cache']);
+assert.strictEqual(PhoLine.expandResponse('normal answer', 'de'), null);
 
-console.log('compressor tests: OK');
+const ipaDe = Phen.ipaProbe('Schule und Tschüss', 'de');
+assert(/[ʃ]/.test(ipaDe));
+const ipaEn = Phen.ipaProbe('the ship', 'en');
+assert(/[θʃ]/.test(ipaEn));
+
+console.log('PhoLine codec tests: OK');
