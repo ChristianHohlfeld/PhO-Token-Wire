@@ -8,12 +8,22 @@ const DEFAULTS = {
   level: 'aggressive',
   maxWords: 80,
   autoDecode: true,
-  onlyIfInputSaves: false
+  onlyIfInputSaves: false,
+  schemaVersion: 2
 };
 
 chrome.runtime.onInstalled.addListener(async () => {
-  const current = await chrome.storage.sync.get(DEFAULTS);
-  await chrome.storage.sync.set({ ...DEFAULTS, ...current });
+  const current = await chrome.storage.sync.get(null);
+  const migrated = { ...DEFAULTS, ...current };
+
+  // v0.1 shipped with safe + 140 words. If the user still has exactly
+  // those legacy defaults, move them to the corrected adaptive defaults.
+  if (!current.schemaVersion) {
+    if (current.level === undefined || current.level === 'safe') migrated.level = 'aggressive';
+    if (current.maxWords === undefined || current.maxWords === 140) migrated.maxWords = 80;
+  }
+  migrated.schemaVersion = 2;
+  await chrome.storage.sync.set(migrated);
 });
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
