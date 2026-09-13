@@ -42,8 +42,8 @@
     if (!word || /^QX\d+Q$/.test(word)) return word;
     let w = word.toLowerCase();
 
-    // Ordered longest-first. This is intentionally an ASCII phonemic
-    // normalization, not IPA: the target LLM should still infer the word.
+    // ASCII phonemic normalization: deliberately easy for today's LLMs to
+    // infer, while removing orthographic redundancy before token measurement.
     w = w
       .replace(/tsch/g, 'tsh')
       .replace(/sch/g, 'sh')
@@ -62,14 +62,18 @@
       .replace(/äu/g, 'oi')
       .replace(/eu/g, 'oi');
 
-    // Orthographic length markers / duplicate consonants carry little extra
-    // information for a lossy S-sufficient channel.
     w = w
       .replace(/([aeiouyäöü])h(?=[^aeiouyäöü]|$)/g, '$1')
       .replace(/([bcdfghjklmnpqrstvwxyz])\1+/g, '$1');
 
     return w;
   }
+
+  // Stage B receives Stage-A-normalized words, so its dictionaries must live
+  // in that same representation. This was the v0.3.0 bug: die->di, while the
+  // filter still looked for "die".
+  const FUNCTION_WORDS_PHEN = new Set([...FUNCTION_WORDS_DE].map(deWordToPhenA));
+  const KEEP_ALWAYS_PHEN = new Set([...KEEP_ALWAYS_DE].map(deWordToPhenA));
 
   function phenA(text) {
     if (!text || !String(text).trim()) return String(text || '');
@@ -87,10 +91,11 @@
     let w = word;
     const bare = w.toLowerCase().replace(/[^a-zäöüß]/g, '');
     if (!bare) return w;
-    if (KEEP_ALWAYS_DE.has(bare)) return w;
-    if (FUNCTION_WORDS_DE.has(bare)) return '';
+    if (KEEP_ALWAYS_PHEN.has(bare)) return w;
+    if (FUNCTION_WORDS_PHEN.has(bare)) return '';
 
-    // Predictable German endings / schwa-like material. Deliberately lossy.
+    // Predictable ending/schwa material. This is intentionally lossy and
+    // should only be selected when the measured token gain justifies it.
     if (w.length > 5) w = w.replace(/en\b/g, 'n');
     if (w.length > 4) w = w.replace(/e\b/g, '');
     if (w.length > 5) w = w.replace(/er\b/g, 'r');
