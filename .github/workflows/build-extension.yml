@@ -1,0 +1,84 @@
+﻿name: build-extension
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-extension:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate extension sources
+        run: |
+          node --check phen.js
+          node --check compressor.js
+          node --check content.js
+          node --check background.js
+          node --check popup.js
+          node --check tokenizer.js
+          node tests/test_compressor.js
+
+      - name: Read manifest version
+        id: version
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./manifest.json').version")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "zip=PhO-Token-Wire-v${VERSION}.zip" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]] && [[ "$GITHUB_REF_NAME" != "v${VERSION}" ]]; then
+            echo "Tag $GITHUB_REF_NAME does not match manifest version v${VERSION}" >&2
+            exit 1
+          fi
+
+      - name: Build Chrome extension ZIP
+        shell: bash
+        run: |
+          rm -rf dist package
+          mkdir -p dist package
+          cp manifest.json package/
+          cp background.js compressor.js phen.js tokenizer.js package/
+          cp content.js content.css package/
+          cp popup.html popup.js package/
+          cp NOTICE package/
+          (cd package && zip -9 -r "../dist/${{ steps.version.outputs.zip }}" .)
+          sha256sum "dist/${{ steps.version.outputs.zip }}" > "dist/${{ steps.version.outputs.zip }}.sha256"
+          unzip -t "dist/${{ steps.version.outputs.zip }}"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhO-Token-Wire-v${{ steps.version.outputs.version }}
+          path: |
+            dist/${{ steps.version.outputs.zip }}
+            dist/${{ steps.version.outputs.zip }}.sha256
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Attach ZIP to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
+            gh release create "$GITHUB_REF_NAME" --title "PhO Token Wire $GITHUB_REF_NAME" --generate-notes
+          gh release upload "$GITHUB_REF_NAME" \
+            "dist/${{ steps.version.outputs.zip }}" \
+            "dist/${{ steps.version.outputs.zip }}.sha256" \
+            --clobber
