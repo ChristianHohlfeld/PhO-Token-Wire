@@ -32,6 +32,19 @@
     /^\s*i(?:'d| would) like you to\s+/i
   ];
 
+  // Aggressive mode removes grammatical surface redundancy while keeping
+  // negation, numbers, code, URLs and named/quoted payload untouched.
+  const TELEGRAPH_REPLACEMENTS = [
+    [/\b(?:also|sozusagen|im Grunde genommen|eigentlich|quasi)\b[,:]?\s*/gi, ''],
+    [/\b(?:ich denke,? dass|ich glaube,? dass)\b\s*/gi, ''],
+    [/\b(?:es ist wichtig zu beachten,? dass|man muss beachten,? dass)\b\s*/gi, ''],
+    [/\b(?:basically|actually|in fact)\b[,:]?\s*/gi, ''],
+    [/\b(?:I think that|I believe that)\b\s*/gi, ''],
+    [/\b(?:it is important to note that|note that)\b\s*/gi, ''],
+    [/\b(?:der|die|das|den|dem|des|ein|eine|einen|einem|einer|eines)\b\s*/gi, ''],
+    [/\b(?:the|a|an)\b\s*/gi, '']
+  ];
+
   function protect(text) {
     const slots = [];
     const body = text.replace(PROTECTED_RE, (m) => {
@@ -46,47 +59,73 @@
     return text.replace(/\uE000(\d+)\uE001/g, (_, i) => slots[Number(i)] ?? _);
   }
 
-  function normalizeOutsideProtected(text) {
-    let out = text
+  function normalize(text) {
+    return text
       .replace(/[ \t]+/g, ' ')
       .replace(/ *\n */g, '\n')
       .replace(/\n{3,}/g, '\n\n')
+      .replace(/\s+([!?.,;:])/g, '$1')
       .replace(/([!?.,;:])\1{1,}/g, '$1')
       .trim();
-    return out;
   }
 
-  function compressInput(input, level = 'safe') {
+  function safeCompress(input) {
     if (!input || !input.trim()) return input;
     const { body, slots } = protect(input);
     let out = body;
-
     for (const [re, replacement] of SAFE_REPLACEMENTS) out = out.replace(re, replacement);
-
     out = out.split('\n').map((line) => {
       let s = line;
       for (const re of LEADING_FILLER) s = s.replace(re, '');
       return s;
     }).join('\n');
-
     out = out.replace(/\b([\p{L}\p{N}_-]{2,})\s+\1\b/giu, '$1');
-
-    if (level === 'aggressive') {
-      out = out
-        .replace(/\b(?:also|sozusagen|im Grunde genommen|basically|actually)\b[,:]?\s*/gi, '')
-        .replace(/\b(?:ich denke,? dass|I think that)\b\s*/gi, '')
-        .replace(/\b(?:es ist wichtig zu beachten,? dass|it is important to note that)\b\s*/gi, '');
-    }
-
-    out = normalizeOutsideProtected(out);
-    return restore(out, slots);
+    return restore(normalize(out), slots);
   }
 
-  function wireInstruction(lang = 'de', maxWords = 140) {
-    if (lang === 'en') {
-      return `[TW1] Unless the user explicitly requests code, a long text, or a reusable artifact, reply only as compact semantic payload with one field per line: K:<core>\nF:<fact>|<fact>\nU:<decision-relevant uncertainty>\nN:<next action>. Omit empty fields. No intro, restatement, filler or conclusion. Keep names, numbers, code exact. <=${maxWords} words unless detail was explicitly requested.`;
-    }
-    return `[TW1] Außer der User verlangt ausdrücklich Code, langen Text oder ein wiederverwendbares Artefakt: antworte nur als kompakter Nutzinhalt, je Feld eine Zeile: K:<Kern>\nF:<Fakt>|<Fakt>\nU:<nur handlungsrelevante Unsicherheit>\nN:<nächste Aktion>. Leere Felder weg. Kein Intro, Wiederholen, Fülltext oder Fazit. Namen, Zahlen, Code exakt. <=${maxWords} Wörter außer Details wurden ausdrücklich verlangt.`;
+  function aggressiveCompress(input) {
+    if (!input || !input.trim()) return input;
+    const safe = safeCompress(input);
+    const { body, slots } = protect(safe);
+    let out = body;
+    for (const [re, replacement] of TELEGRAPH_REPLACEMENTS) out = out.replace(re, replacement);
+    // Keep logical operators/negation; squeeze prose into a model-readable telegram.
+    out = out
+      .replace(/\s+(?:und|and)\s+/gi, '; ')
+      .replace(/\s+(?:aber|but)\s+/gi, '; aber ')
+      .replace(/\s*;\s*;+/g, '; ');
+    return restore(normalize(out), slots);
+  }
+
+  function compressInput(input, level = 'safe') {
+    return level === 'aggressive' ? aggressiveCompress(input) : safeCompress(input);
+  }
+
+  function inputCandidates(input, level = 'safe') {
+    const seen = new Set();
+    const out = [];
+    const add = (name, text) => {
+      const v = (text || '').trim();
+      if (!v || seen.has(v)) return;
+      seen.add(v);
+      out.push({ name, text: v });
+    };
+    add('original', input);
+    add('safe', safeCompress(input));
+    if (level === 'aggressive') add('aggressive', aggressiveCompress(input));
+    return out;
+  }
+
+  function responseHint(lang = 'de', maxWords = 80) {
+    // Deliberately tiny: the old TW1 schema cost ~100 input tokens per turn.
+    return lang === 'en'
+      ? `Reply tersely; useful content only; ≤${maxWords} words.`
+      : `Knapp antworten; nur Nutzinhalt; ≤${maxWords} Wörter.`;
+  }
+
+  // Compatibility alias for older installs/settings.
+  function wireInstruction(lang = 'de', maxWords = 80) {
+    return responseHint(lang, maxWords);
   }
 
   function detectLanguage(text) {
@@ -95,6 +134,7 @@
     return de >= en ? 'de' : 'en';
   }
 
+  // Legacy decoder retained so old TW1 replies remain readable.
   function parseWire(raw) {
     if (!raw || !/(?:^|\n|;\s*)\s*[KFUN]:/m.test(raw)) return null;
     const result = { K: [], F: [], U: [], N: [] };
@@ -110,6 +150,10 @@
     return Object.values(result).some((v) => v.length) ? result : null;
   }
 
+  function escapeHtml(s) {
+    return s.replace(/[&<>\"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '\"':'&quot;' }[c]));
+  }
+
   function renderWire(parsed, lang = 'de') {
     if (!parsed) return '';
     const labels = lang === 'en'
@@ -123,19 +167,24 @@
     return sections.join('');
   }
 
-  function escapeHtml(s) {
-    return s.replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]));
-  }
-
   function composeForSend(input, settings = {}) {
     const level = settings.level || 'safe';
     const compact = settings.compressInput === false ? input : compressInput(input, level);
     if (settings.wireMode === false) return compact;
     const lang = detectLanguage(input);
-    return `${compact}\n\n${wireInstruction(lang, settings.maxWords || 140)}`;
+    return `${compact}\n\n${responseHint(lang, settings.maxWords || 80)}`;
   }
 
-  const api = { compressInput, wireInstruction, detectLanguage, parseWire, renderWire, composeForSend };
+  const api = {
+    compressInput,
+    inputCandidates,
+    responseHint,
+    wireInstruction,
+    detectLanguage,
+    parseWire,
+    renderWire,
+    composeForSend
+  };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   globalThis.PhenTokenWire = api;
 })();
