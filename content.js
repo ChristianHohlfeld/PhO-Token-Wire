@@ -73,9 +73,19 @@
   }
 
   function formatDelta(before, after) {
-    const d = before - after;
-    const p = before ? (100 * d / before) : 0;
-    return `${d >= 0 ? '-' : '+'}${Math.abs(d)} (${d >= 0 ? '-' : '+'}${Math.abs(p).toFixed(1)}%)`;
+    const saved = before - after;
+    const pct = before ? (100 * saved / before) : 0;
+    return `${saved >= 0 ? '-' : '+'}${Math.abs(saved)} (${saved >= 0 ? '-' : '+'}${Math.abs(pct).toFixed(1)}%)`;
+  }
+
+  async function measuredCandidates(original) {
+    if (settings.compressInput === false) {
+      const m = await count(original);
+      return [{ name: 'original', text: original, measure: m }];
+    }
+    const candidates = PTW.inputCandidates(original, settings.level || 'safe');
+    const measures = await Promise.all(candidates.map(c => count(c.text)));
+    return candidates.map((c, i) => ({ ...c, measure: measures[i] }));
   }
 
   async function prepareComposer() {
@@ -87,38 +97,49 @@
     if (!original) return updateStatus('Eingabe ist leer');
 
     buttonEl.disabled = true;
-    updateStatus('messe …');
+    updateStatus('messe Kandidaten …');
 
-    const compressedOnly = settings.compressInput === false ? original : PTW.compressInput(original, settings.level);
-    let outgoing = settings.wireMode === false
-      ? compressedOnly
-      : `${compressedOnly}\n\n${PTW.wireInstruction(PTW.detectLanguage(original), settings.maxWords)}`;
+    const candidates = await measuredCandidates(original);
+    const originalCandidate = candidates.find(c => c.name === 'original') || candidates[0];
+    const best = candidates.reduce((a, b) => b.measure.count < a.measure.count ? b : a);
 
-    const [origCount, compactCount] = await Promise.all([
-      count(original), count(compressedOnly)
-    ]);
+    let outgoing = best.text;
+    let hintTokens = 0;
+    let outgoingMeasure = best.measure;
 
-    if (settings.compressInput !== false && compactCount.count >= origCount.count) {
-      outgoing = settings.wireMode === false
-        ? original
-        : `${original}\n\n${PTW.wireInstruction(PTW.detectLanguage(original), settings.maxWords)}`;
+    if (settings.wireMode !== false) {
+      const hint = PTW.responseHint(PTW.detectLanguage(original), settings.maxWords || 80);
+      const withHint = `${best.text}\n\n${hint}`;
+      outgoingMeasure = await count(withHint);
+      hintTokens = outgoingMeasure.count - best.measure.count;
+      outgoing = withHint;
     }
-    const outgoingCount = await count(outgoing);
 
-    if (settings.onlyIfInputSaves && outgoingCount.count >= origCount.count) {
+    const inputSaved = originalCandidate.measure.count - best.measure.count;
+    const sendDelta = originalCandidate.measure.count - outgoingMeasure.count;
+
+    if (settings.onlyIfInputSaves && sendDelta <= 0) {
       buttonEl.disabled = false;
-      return updateStatus(`nicht geändert\nInput inkl. Wire wäre ${formatDelta(origCount.count, outgoingCount.count)}`);
+      return updateStatus(
+        `nicht geändert\nBestes Input: ${originalCandidate.measure.count} → ${best.measure.count} (${inputSaved} gespart)\n` +
+        `Antwort-Hinweis würde ${Math.abs(sendDelta)} Token netto hinzufügen`
+      );
     }
 
+    // Never replace the user's text with a worse compression candidate.
+    // The only allowed positive overhead is the explicit tiny response hint,
+    // whose break-even is shown separately.
     setNativeValue(el, outgoing);
-    lastPrepared = { original, outgoing, origCount, compactCount, outgoingCount };
+    lastPrepared = { original, outgoing, originalCandidate, best, outgoingMeasure, hintTokens };
 
-    const exact = origCount.exact && compactCount.exact && outgoingCount.exact;
-    updateStatus(
-      `Prompt: ${origCount.count} → ${compactCount.count} ${formatDelta(origCount.count, compactCount.count)}\n` +
-      `mit Wire: ${outgoingCount.count} (${outgoingCount.count - compactCount.count} Overhead)\n` +
-      `${exact ? 'o200k exakt' : 'Fallback-Schätzung'}; Completion-Ziel ≤ ${settings.maxWords} Wörter`
-    );
+    const exact = originalCandidate.measure.exact && best.measure.exact && outgoingMeasure.exact;
+    const breakEven = Math.max(0, outgoingMeasure.count - originalCandidate.measure.count);
+    const inputLine = `Input: ${originalCandidate.measure.count} → ${best.measure.count} ${formatDelta(originalCandidate.measure.count, best.measure.count)} [${best.name}]`;
+    const sendLine = settings.wireMode !== false
+      ? `Antwort-Hinweis: +${hintTokens}; gesendet: ${outgoingMeasure.count}; Break-even: ${breakEven} Completion-Token`
+      : `gesendet: ${outgoingMeasure.count}`;
+
+    updateStatus(`${inputLine}\n${sendLine}\n${exact ? 'o200k exakt' : 'Fallback-Schätzung'}`);
     buttonEl.disabled = false;
   }
 
@@ -131,11 +152,11 @@
     const root = document.createElement('div');
     root.id = 'pho-token-wire-widget';
     root.innerHTML = `
-      <div class="ptw-head"><span>PhO Token Wire</span><span class="ptw-badge">client-side</span></div>
+      <div class="ptw-head"><span>PhO Token Wire</span><span class="ptw-badge">measured</span></div>
       <div class="ptw-body">
-        <button type="button">Komprimieren + Wire</button>
+        <button type="button">Token optimieren</button>
         <div class="ptw-stats">bereit</div>
-        <div class="ptw-mini">Sendet erst, wenn du selbst auf Senden drückst.</div>
+        <div class="ptw-mini">Ändert nur den Composer. Senden bleibt manuell.</div>
       </div>`;
     document.documentElement.appendChild(root);
     buttonEl = root.querySelector('button');
@@ -143,6 +164,7 @@
     buttonEl.addEventListener('click', prepareComposer);
   }
 
+  // Legacy TW1 decoder: harmless for new plain-text terse replies.
   function candidateAssistantBlocks() {
     const sels = [
       '[data-message-author-role="assistant"]',
