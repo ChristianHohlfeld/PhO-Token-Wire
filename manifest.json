@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "PhO Token Wire",
-  "version": "0.1.0",
-  "description": "Client-side semantic prompt compression + compact AI response wire format with local decoding and o200k token measurement.",
+  "version": "0.2.0",
+  "description": "Client-side measured prompt compression and terse-response control with exact o200k token comparison.",
   "permissions": [
     "storage"
   ],
