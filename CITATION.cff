@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+message: "If you use or discuss PhO Token Wire, please cite Christian Heinrich Hohlfeld."
+title: "PhO Token Wire: Client-Side Semantic Token Reduction and Local Response Rehydration for LLM Web Chats"
+type: software
+authors:
+  - family-names: "Hohlfeld"
+    given-names: "Christian Heinrich"
+    orcid: "https://orcid.org/0009-0003-6634-9045"
+website: "https://christianhohlfeld.com/"
+repository-code: "https://github.com/ChristianHohlfeld/PhO-Token-Wire"
+version: "0.1.0"
+date-released: "2026-09-13"
+abstract: >-
+  Chrome Manifest V3 research prototype for reducing LLM web-chat transport text
+  through conservative client-side prompt redundancy reduction, tokenizer-cost
+  gating, a compact semantic K/F/U/N response wire format, and local browser
+  rehydration of presentation structure.
+keywords:
+  - LLM
+  - token compression
+  - semantic compression
+  - browser extension
+  - PhO-Compress
+license: "proprietary"

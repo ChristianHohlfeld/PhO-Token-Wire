@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "PhO Token Wire",
+  "version": "0.1.0",
+  "description": "Client-side semantic prompt compression + compact AI response wire format with local decoding and o200k token measurement.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://openaipublic.blob.core.windows.net/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "PhO Token Wire",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://claude.ai/*",
+        "https://gemini.google.com/*",
+        "https://grok.com/*"
+      ],
+      "js": [
+        "compressor.js",
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "author": "Christian Heinrich Hohlfeld",
+  "homepage_url": "https://christianhohlfeld.com/"
+}
