@@ -1,6 +1,6 @@
 cff-version: 1.2.0
-message: "If you use or discuss PhO Token Wire, please cite Christian Heinrich Hohlfeld."
-title: "PhO Token Wire: Client-Side Semantic Token Reduction and Local Response Rehydration for LLM Web Chats"
+message: "If you use or discuss PhoLine / PhO Token Wire, please cite Christian Heinrich Hohlfeld."
+title: "PhoLine — PhO Token Wire: Bilingual Pre-Tokenizer Channel Compression for LLM Web Chats"
 type: software
 authors:
   - family-names: "Hohlfeld"
@@ -8,16 +8,19 @@ authors:
     orcid: "https://orcid.org/0009-0003-6634-9045"
 website: "https://christianhohlfeld.com/"
 repository-code: "https://github.com/ChristianHohlfeld/PhO-Token-Wire"
-version: "0.1.0"
+version: "0.4.0"
 date-released: "2026-09-13"
 abstract: >-
-  Chrome Manifest V3 research prototype for reducing LLM web-chat transport text
-  through conservative client-side prompt redundancy reduction, tokenizer-cost
-  gating, a compact semantic K/F/U/N response wire format, and local browser
-  rehydration of presentation structure.
+  Chrome Manifest V3 research prototype derived from Christian Heinrich Hohlfeld's
+  PhO-Compress work. PhoLine observes normal German or English input, constructs a
+  reduced tokenizer-aware channel, measures it against the original, and when it is
+  cheaper replaces the matching page-level fetch, XHR, or WebSocket request payload
+  before transmission. Optional paragraph-mark response atoms are expanded locally.
 keywords:
   - LLM
   - token compression
-  - semantic compression
+  - channel compression
+  - phonetic compression
   - browser extension
   - PhO-Compress
+  - PhoLine
