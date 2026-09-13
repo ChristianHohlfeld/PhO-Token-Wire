@@ -32,8 +32,6 @@
     /^\s*i(?:'d| would) like you to\s+/i
   ];
 
-  // Aggressive mode removes grammatical surface redundancy while keeping
-  // negation, numbers, code, URLs and named/quoted payload untouched.
   const TELEGRAPH_REPLACEMENTS = [
     [/\b(?:also|sozusagen|im Grunde genommen|eigentlich|quasi)\b[,:]?\s*/gi, ''],
     [/\b(?:ich denke,? dass|ich glaube,? dass)\b\s*/gi, ''],
@@ -89,7 +87,6 @@
     const { body, slots } = protect(safe);
     let out = body;
     for (const [re, replacement] of TELEGRAPH_REPLACEMENTS) out = out.replace(re, replacement);
-    // Keep logical operators/negation; squeeze prose into a model-readable telegram.
     out = out
       .replace(/\s+(?:und|and)\s+/gi, '; ')
       .replace(/\s+(?:aber|but)\s+/gi, '; aber ')
@@ -110,20 +107,36 @@
       seen.add(v);
       out.push({ name, text: v });
     };
+
     add('original', input);
-    add('safe', safeCompress(input));
-    if (level === 'aggressive') add('aggressive', aggressiveCompress(input));
+    const safe = safeCompress(input);
+    add('safe', safe);
+
+    if (level === 'aggressive') {
+      add('aggressive', aggressiveCompress(input));
+
+      // Actual PhO candidates: Stage A normalizes grapheme redundancy toward
+      // an ASCII phonemic spelling; Stage B additionally removes predictable
+      // phonetic/grammatical surface material. They are NEVER chosen merely
+      // because they look shorter: content.js measures o200k and picks the
+      // lowest real token count.
+      const phen = globalThis.PhenCodec;
+      if (phen?.candidates) {
+        for (const c of phen.candidates(input)) add(c.name, c.text);
+        for (const c of phen.candidates(safe)) add(`${c.name}+safe`, c.text);
+      }
+    }
     return out;
   }
 
   function responseHint(lang = 'de', maxWords = 80) {
-    // Deliberately tiny: the old TW1 schema cost ~100 input tokens per turn.
+    // Tiny token-native output protocol. The model stays in normal learned
+    // vocabulary; "|" only marks fragment boundaries for local rendering.
     return lang === 'en'
-      ? `Reply tersely; useful content only; ≤${maxWords} words.`
-      : `Knapp antworten; nur Nutzinhalt; ≤${maxWords} Wörter.`;
+      ? `Telegram style; ≤${maxWords} words; separate points with |.`
+      : `Telegrammstil; ≤${maxWords} Wörter; Punkte mit |.`;
   }
 
-  // Compatibility alias for older installs/settings.
   function wireInstruction(lang = 'de', maxWords = 80) {
     return responseHint(lang, maxWords);
   }
@@ -134,7 +147,6 @@
     return de >= en ? 'de' : 'en';
   }
 
-  // Legacy decoder retained so old TW1 replies remain readable.
   function parseWire(raw) {
     if (!raw || !/(?:^|\n|;\s*)\s*[KFUN]:/m.test(raw)) return null;
     const result = { K: [], F: [], U: [], N: [] };
@@ -148,6 +160,12 @@
       result[key].push(...items);
     }
     return Object.values(result).some((v) => v.length) ? result : null;
+  }
+
+  function parseFragments(raw) {
+    if (!raw || !raw.includes('|')) return null;
+    const parts = raw.split(/\s*\|\s*/).map(x => x.trim()).filter(Boolean);
+    return parts.length >= 2 ? parts : null;
   }
 
   function escapeHtml(s) {
@@ -167,6 +185,11 @@
     return sections.join('');
   }
 
+  function renderFragments(parts) {
+    if (!parts?.length) return '';
+    return `<ul>${parts.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ul>`;
+  }
+
   function composeForSend(input, settings = {}) {
     const level = settings.level || 'safe';
     const compact = settings.compressInput === false ? input : compressInput(input, level);
@@ -182,7 +205,9 @@
     wireInstruction,
     detectLanguage,
     parseWire,
+    parseFragments,
     renderWire,
+    renderFragments,
     composeForSend
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
