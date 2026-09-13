@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "PhO Token Wire",
-  "version": "0.3.1",
-  "description": "Measured client-side PhO prompt compression with Phen-A/Phen-B candidates and exact o200k selection.",
+  "name": "PhoLine — PhO Token Wire",
+  "version": "0.4.0",
+  "minimum_chrome_version": "111",
+  "description": "Bilingual PhO channel compression that intercepts fetch, XHR and WebSocket requests before provider tokenization.",
   "permissions": [
     "storage"
   ],
@@ -13,10 +14,24 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "PhO Token Wire",
+    "default_title": "PhoLine",
     "default_popup": "popup.html"
   },
   "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://claude.ai/*",
+        "https://gemini.google.com/*",
+        "https://grok.com/*"
+      ],
+      "js": [
+        "page-hook.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
     {
       "matches": [
         "https://chatgpt.com/*",
@@ -33,7 +48,7 @@
       "css": [
         "content.css"
       ],
-      "run_at": "document_idle"
+      "run_at": "document_start"
     }
   ],
   "author": "Christian Heinrich Hohlfeld",
