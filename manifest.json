@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "PhO Token Wire",
-  "version": "0.2.0",
-  "description": "Client-side measured prompt compression and terse-response control with exact o200k token comparison.",
+  "version": "0.3.0",
+  "description": "Measured client-side PhO prompt compression with Phen-A/Phen-B candidates and exact o200k selection.",
   "permissions": [
     "storage"
   ],
@@ -26,6 +26,7 @@
         "https://grok.com/*"
       ],
       "js": [
+        "phen.js",
         "compressor.js",
         "content.js"
       ],
