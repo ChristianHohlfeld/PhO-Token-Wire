@@ -97,7 +97,7 @@
     if (!original) return updateStatus('Eingabe ist leer');
 
     buttonEl.disabled = true;
-    updateStatus('messe Kandidaten …');
+    updateStatus('messe original/safe/Phen-A/Phen-B …');
 
     const candidates = await measuredCandidates(original);
     const originalCandidate = candidates.find(c => c.name === 'original') || candidates[0];
@@ -120,26 +120,24 @@
 
     if (settings.onlyIfInputSaves && sendDelta <= 0) {
       buttonEl.disabled = false;
+      const all = candidates.map(c => `${c.name}:${c.measure.count}`).join(' | ');
       return updateStatus(
-        `nicht geändert\nBestes Input: ${originalCandidate.measure.count} → ${best.measure.count} (${inputSaved} gespart)\n` +
-        `Antwort-Hinweis würde ${Math.abs(sendDelta)} Token netto hinzufügen`
+        `${all}\nnicht geändert; Antwort-Hinweis würde ${Math.abs(sendDelta)} Token netto hinzufügen`
       );
     }
 
-    // Never replace the user's text with a worse compression candidate.
-    // The only allowed positive overhead is the explicit tiny response hint,
-    // whose break-even is shown separately.
     setNativeValue(el, outgoing);
-    lastPrepared = { original, outgoing, originalCandidate, best, outgoingMeasure, hintTokens };
+    lastPrepared = { original, outgoing, originalCandidate, best, outgoingMeasure, hintTokens, candidates };
 
-    const exact = originalCandidate.measure.exact && best.measure.exact && outgoingMeasure.exact;
+    const exact = candidates.every(c => c.measure.exact) && outgoingMeasure.exact;
     const breakEven = Math.max(0, outgoingMeasure.count - originalCandidate.measure.count);
-    const inputLine = `Input: ${originalCandidate.measure.count} → ${best.measure.count} ${formatDelta(originalCandidate.measure.count, best.measure.count)} [${best.name}]`;
+    const all = candidates.map(c => `${c.name}:${c.measure.count}`).join(' | ');
+    const chosen = `gewählt ${best.name}: ${originalCandidate.measure.count} → ${best.measure.count} ${formatDelta(originalCandidate.measure.count, best.measure.count)}`;
     const sendLine = settings.wireMode !== false
-      ? `Antwort-Hinweis: +${hintTokens}; gesendet: ${outgoingMeasure.count}; Break-even: ${breakEven} Completion-Token`
-      : `gesendet: ${outgoingMeasure.count}`;
+      ? `Reply-Hinweis +${hintTokens}; gesendet ${outgoingMeasure.count}; Break-even ${breakEven}`
+      : `gesendet ${outgoingMeasure.count}`;
 
-    updateStatus(`${inputLine}\n${sendLine}\n${exact ? 'o200k exakt' : 'Fallback-Schätzung'}`);
+    updateStatus(`${all}\n${chosen}\n${sendLine}\n${exact ? 'o200k exakt' : 'Fallback-Schätzung'}`);
     buttonEl.disabled = false;
   }
 
@@ -156,7 +154,7 @@
       <div class="ptw-body">
         <button type="button">Token optimieren</button>
         <div class="ptw-stats">bereit</div>
-        <div class="ptw-mini">Ändert nur den Composer. Senden bleibt manuell.</div>
+        <div class="ptw-mini">Wählt nur real billigeren o200k-Kandidaten. Senden bleibt manuell.</div>
       </div>`;
     document.documentElement.appendChild(root);
     buttonEl = root.querySelector('button');
@@ -164,7 +162,6 @@
     buttonEl.addEventListener('click', prepareComposer);
   }
 
-  // Legacy TW1 decoder: harmless for new plain-text terse replies.
   function candidateAssistantBlocks() {
     const sels = [
       '[data-message-author-role="assistant"]',
@@ -180,15 +177,27 @@
   function maybeDecodeBlock(block) {
     if (!settings?.autoDecode || block.dataset.phoWireDecoded === '1') return;
     if (block.closest('#pho-token-wire-widget')) return;
+    if (block.querySelector('pre, code')) return;
     const text = (block.innerText || block.textContent || '').trim();
-    if (!text.includes('K:') && !text.includes('F:') && !text.includes('N:') && !text.includes('U:')) return;
-    const parsed = PTW.parseWire(text);
-    if (!parsed) return;
-    const panel = document.createElement('div');
-    panel.className = 'pho-wire-decoded';
-    panel.innerHTML = PTW.renderWire(parsed, PTW.detectLanguage(text));
-    block.appendChild(panel);
-    block.dataset.phoWireDecoded = '1';
+
+    const legacy = PTW.parseWire(text);
+    if (legacy) {
+      const panel = document.createElement('div');
+      panel.className = 'pho-wire-decoded';
+      panel.innerHTML = PTW.renderWire(legacy, PTW.detectLanguage(text));
+      block.appendChild(panel);
+      block.dataset.phoWireDecoded = '1';
+      return;
+    }
+
+    const fragments = PTW.parseFragments?.(text);
+    if (fragments && fragments.length <= 20) {
+      const panel = document.createElement('div');
+      panel.className = 'pho-wire-decoded';
+      panel.innerHTML = PTW.renderFragments(fragments);
+      block.appendChild(panel);
+      block.dataset.phoWireDecoded = '1';
+    }
   }
 
   function decodeExisting() {
