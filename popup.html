@@ -10,13 +10,13 @@ body{margin:0;width:320px;background:#11161d;color:#eef3f8;font:13px/1.4 system-
 <body><main>
 <h1>PhO Token Wire</h1>
 <label><span>Aktiv</span><input id="enabled" type="checkbox"></label>
-<label><span>Input kürzen</span><input id="compressInput" type="checkbox"></label>
-<label><span>Wire-Antwortformat</span><input id="wireMode" type="checkbox"></label>
-<label><span>Auto-Decoding</span><input id="autoDecode" type="checkbox"></label>
-<label><span>Kompression</span><select id="level"><option value="safe">safe</option><option value="aggressive">aggressiv</option></select></label>
+<label><span>Input adaptiv kürzen</span><input id="compressInput" type="checkbox"></label>
+<label><span>Antwort knapp halten</span><input id="wireMode" type="checkbox"></label>
+<label><span>Kompression</span><select id="level"><option value="safe">safe</option><option value="aggressive">aggressiv/adaptiv</option></select></label>
 <label><span>Antwortlimit Wörter</span><input id="maxWords" type="number" min="20" max="1000" step="10"></label>
-<label><span>Nur wenn Prompt netto spart</span><input id="onlyIfInputSaves" type="checkbox"></label>
+<label><span>Nur wenn Sende-Prompt spart</span><input id="onlyIfInputSaves" type="checkbox"></label>
+<input id="autoDecode" type="checkbox" hidden>
 <div class="ok" id="status"></div>
-<div class="note">Tokenmessung: o200k_base wird beim ersten Einsatz direkt von OpenAI geladen und lokal im Browser gecacht. Das misst Text-Tokens, nicht versteckte Chat-Framing-Tokens.</div>
+<div class="note">Es werden mehrere Prompt-Varianten mit o200k_base gemessen; nur die billigste Input-Variante wird verwendet. Der Antwort-Hinweis ist bewusst minimal und sein Break-even wird im Chat angezeigt.</div>
 </main><script src="popup.js"></script></body>
 </html>
