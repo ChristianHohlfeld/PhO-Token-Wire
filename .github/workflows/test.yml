@@ -14,6 +14,9 @@ jobs:
           node-version: '22'
       - run: node --check phen.js
       - run: node --check compressor.js
+      - run: node --check page-hook.js
       - run: node --check content.js
       - run: node --check background.js
+      - run: node --check popup.js
       - run: node tests/test_compressor.js
+      - run: node tests/verify_o200k_vocab.js
